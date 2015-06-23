@@ -1,0 +1,10 @@
+This is a short description how to use m77_echo.
+
+If the test function m77Echo was added to the MDIS image (see M77 Driver Manual: 
+Building the Driver) and the serial devices were made available by calling m77Drv, 
+m77Echo can be called from the shell as follows:
+
+sp m77Echo, "/m77_0/0", "/m77_0/0", 9600
+
+Now connect a ASCII-Terminal (RS232) to channel 0 of Module 0, setup terminal to 9600 baud 8N1
+no flow control and any typed character must be echoed from M77 module.

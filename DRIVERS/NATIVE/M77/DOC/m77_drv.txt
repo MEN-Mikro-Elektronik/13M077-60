@@ -1,0 +1,154 @@
+M77 / M45N /M69N Plain Text Short Manual
+===============================
+
+	1. Introduction
+	2. The Files You Need
+	3. Compiling
+	4. Running the Driver
+
+1. Introduction
+---------------
+
+The M77, M45N and M69N are UART M-Modules based on an onboard Oxford
+OX16C954 controller with 128 byte FIFOs.
+
+The M077 is a QUAD UART M-Module. It supports four high performance UARTs,
+with RS232(/423 only Layout < R02) - RS422/485 level capability, on the M-Module
+Rear I/O connector J2 or on the 25 pin Front-Panel D-Sub connector J3. Handshake
+lines are not supported.
+
+The M045N is a Octal UART M-Module. It supports eight high performance UARTs,
+with RS232 level capability on a 44-pin front panel HD-Sub Connector J3 or on the
+M-Module Rear I/O connector J2. Provided are 2 channels, each with 6 lines
+(4 modem control lines) and 6 channels, each with 4 lines (2 modem control lines).
+
+The M069N is a QUAD UART M-Module. It supports four high performance
+UARTs, with RS232 level capability on a 25-pin front panel HD-Sub Connector J3 or
+on the M-Module Rear I/O connector J2. Provided are 2 channels, each with 6 lines
+(4 modem control lines) and 2 channels, each with 4 lines (2 modem control lines).
+All lines are optically isolated.
+
+The M77 UART line drivers support the following modes, which are software definable:
+- RS422 half duplex
+- RS422 full duplex
+- RS485 half duplex
+- RS485 full duplex
+- RS423 (only M77 Revisions < 02.00)
+- RS232
+
+For a detailed description of building and using the M77 driver please refer to M77 Driver User Manual.
+
+
+2. The Files You Need
+---------------------
+
+The necessary files are:
+
+- m77_drv.c		VXWORKS driver source file
+- m77_drv.h		VXWORKS driver header file
+- driver.mak		makefile for m77 driver
+- driver_sw.mak		makefile for m77 driver (swapped variant)
+- m77_min.dsc		minimal meta descriptor file for M77 driver
+- m77_max.dsc		maximal meta descriptor file for M77 driver
+- DOC/m77_drv.txt	short installation guide (this file)
+- $(VXWORKS_DIR)/PACKAGE_DESC/13m07760.xml
+                    configuration information file for M77 driver
+
+Furthermore the complete MDIS package for VXWORKS is needed.
+
+Additionally there are some files for test and docu:
+
+- TEST/m77_echo.c	driver test utility
+- TEST/m77_echo.txt	driver test description
+- TEST/program.mak      makefile for m77_echo.c
+
+
+3. Compiling
+------------
+
+If not already installed, install the MDIS4 package for VXWORKS.
+Unzip File 13m07760.zip, to the same directory where MDIS was installed, using folder information.
+
+Although the M77 driver is no MDIS driver it needs some parts of MDIS. It is also build
+from MDIS Makefile. How to build MDIS is described in MDIS User Manual.
+
+To configure MDIS first of all the meta descriptor file for the baseboard must be configured.
+The configuration of the baseboard can be done as described in MDIS User Manual.
+
+On current versions of MDIS the M77/M45N/M69N descriptors are part of the system.dsc file and are
+generated using the MDIS Wizard.
+
+For configuring the MDIS System manually:
+  The M77 Descriptor m77_max.dsc must be modified according to the needs of application.
+  Now driver.mak or driver_sw.mak must be added to MDIS Makefile. Please refer to
+  MDIS User Manual for details when driver_sw.mak must be used.
+  Additionally the meta descriptor file for the M77 must be added to MDIS
+  Makefile. The following Makefile dump shows how to add driver.mak and the
+  Descriptor m77_max to Makefile:
+
+  ================== D3 MDIS Makefile Dump Start =====================
+  #-----------------------------------------------------------
+  # Define the descriptors (board and device descriptors)
+  # to build
+  #
+  # Copy the meta descriptors from the driver directories to
+  # this directory
+  #
+  ALL_DESC		:= \
+  			m55_1 \
+  			d201_1 \
+  			m77_max
+  .
+  .
+  .
+  #-----------------------------------------------------------
+  # Define Low level drivers to build
+  # Specify the path to their common makefiles here
+  # (path relative to VXWORKS/DRIVERS/MDIS_LL)
+  #
+  # Always use swapped driver variants for devices on CPCI!
+  #
+  ALL_LL_DRIVERS	:= \
+  			M066/DRIVER/COM/driver.mak \
+  			../NATIVE/M77/driver.mak \
+
+  ================== Makefile Dump End =======================
+
+
+After building and loading MDIS to the target system the M77 driver is ready for
+use.
+
+
+4. Running the Driver
+--------------------
+
+The M77 driver can be started, calling m77Drv (or m77Drv_sw for swapped variant) in the following way:
+
+m77Drv ([bbDescP], [modDescP]); or m77Drv_sw ([bbDescP], [modDescP]);
+bbDescP:	pointer to base board descriptor
+modDescP	pointer to module descriptor
+
+m77Drv or m77Drv_sw create VXWORKS devices for all channels of the appropriate module.
+
+For the driver to work properly nad support the functionality of M45N/M69N the ID_CHECK must be enalbed
+in the desciptor. Otherwise the driver assumes M77 to be connected!
+
+The device names can be interpreted as follows:
+
+Device Name:		/[name]_[devNo]/[chanNum]
+	   name: 	m77 (or m77sw_ for swapped variant)
+	            m45n (or m45nsw_ for swapped variant)
+	            m69n (or m69nsw_ for swapped variant)
+	  devNo: 	Number of M77-Modules in system (0.. M77_MAX_MODULES -1),
+			determined by the order of m77Drv calls. First call devNo = 0,
+			second call devNo = 1 etc..
+	chanNum:	Channel number of M77/M69N (0..3) M45N (0-7)
+
+Now the 4/8 channels of the M-Module are available and can be used by calling standard VXWORKS functions:
+
+- open ( name, mode, 0 )		e.g. fd = open ( "/m77_0/0", 2, 0 )
+- read ( fd, data, bytes )		e.g. read ( fd, &buffer, size )
+- write ( fd, data, bytes )		e.g. write ( fd, &buffer, size )
+- ioctl ( fd, request, value )		e.g. ioctl ( fd, FIOBAUDRATE, 19200 )
+- close ( fd )				e.g. close ( fd )
+
