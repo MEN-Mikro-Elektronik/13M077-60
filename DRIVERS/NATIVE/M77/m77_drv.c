@@ -4,8 +4,8 @@
  *      Project: M77 VxWorks Driver
  *
  *       Author: ag
- *        $Date: 2010/01/22 10:25:26 $
- *    $Revision: 1.8 $
+ *        $Date: 2013/02/13 18:35:53 $
+ *    $Revision: 1.9 $
  *
  *  Description: VxWorks BBIS driver for the M45N/M69N/M77 UART modules
  *
@@ -35,6 +35,10 @@
  *-------------------------------[ History ]---------------------------------
  *
  * $Log: m77_drv.c,v $
+ * Revision 1.9  2013/02/13 18:35:53  channoyer
+ * R: Spurious interrupts with some configuration
+ * M: Check interrupt request from 0X16C954 before exiting the interrupt handler
+ *
  * Revision 1.8  2010/01/22 10:25:26  cs
  * R: MACCESS macros where modified for MPC85xx (compile errors)
  * M: put all MACCESS macros in conditionals into curly braces
@@ -101,6 +105,11 @@ typedef int LL_HANDLE;
 #include <MEN/bk.h>
 #include "tyLib.h"
 #include "m77_drv.h"		/* M77 defines + macros */
+
+#include <vxBusLib.h>
+#include <hwif/vxbus/vxBus.h>
+#include <hwif/vxbus/vxbPciLib.h>
+#include <hwif/util/vxbParamSys.h>
 
 /*--------------------------------------+
 |   TYPDEFS                             |
@@ -982,14 +991,14 @@ static STATUS m77DevCreate
 	if( (m77DevData[device_num]->modId == MOD_ID_M45N) && (channel > 3) )
 		controllerNum = 1;
 
-	pM77TyDev->ma = (MACCESS) ( m77DevData[device_num]->ma +
+	pM77TyDev->ma = (MACCESS) ( (u_int32)m77DevData[device_num]->ma +
 								(controllerNum * M45N_CTRL_REG_BLOCK_SIZE) +
 								((channel - controllerNum * 4) * 0x10) );
 	DBGWRT_2 ((DBH, "m77DevCreate: pM77TyDev->ma = 0x%08lx\n", pM77TyDev->ma));
 
 
 	/* set channel number in TyCo structure */
-	pM77TyDev->ch_num = channel;
+	pM77TyDev->ch_num = (u_int8) channel;
 
 	/* introduce driver to VxWorks I/O system */
     if (tyDevInit ( &pM77TyDev->tyDev, pM77TyDev->rdBufSize, pM77TyDev->wrtBufSize,
@@ -1214,6 +1223,7 @@ static int32 m77IrqInstall( u_int32 devBusType,
     M77_vmeIntEnableRtn = MK_GetVmeIntEnableRtn();
     M77_intEnableRtn    = MK_GetIntEnableRtn();
 
+#if 0
     /* install the new isr */
     vxRetCode = (*M77_intConnectRtn) ((VOIDFUNCPTR*)  INUM_TO_IVEC(irqVect),
                                       (VOIDFUNCPTR)   newIsr,
@@ -1224,6 +1234,19 @@ static int32 m77IrqInstall( u_int32 devBusType,
     	retCode = ERR_MK_IRQ_INSTALL;
     	goto IRQ_INST_ERR;
 	}/*if*/
+#else
+		/* use vxbIntConnect( ), the VXB_INTR_DYNAMIC is configured in the BSP */
+		{
+			VXB_DEVICE_ID devID = vxbInstByNameFind("menPciCham",0);
+			if( devID == NULL )
+				goto IRQ_INST_ERR;
+
+			DBGWRT_1((DBH, "vxbIntConnect connecting 0x%x, 0x%x\n", newIsr, device_num));
+		    if ((vxbIntConnect (devID, 0, (VOIDFUNCPTR)newIsr, (void*)device_num)) != OK)
+		    	DBGWRT_1((DBH, "vxbIntConnect returned ERROR\n"));
+		    DBGWRT_1((DBH, "vxbIntConnect returned OK\n"));
+		}
+#endif
 
 	if( bbisBusType == OSS_BUSTYPE_VME ) {
         /* enables VMEbus interrupts */
@@ -1360,7 +1383,7 @@ static STATUS  m77BaudSet
 		    	return ERROR;
 		    oldlevel = intLock ();
 
-	    	writeDivisor(pM77TyDev, m77BaudTable[ix].preset);
+	    	writeDivisor(pM77TyDev, (u_int16) m77BaudTable[ix].preset);
 
 		    intUnlock(oldlevel);
 		    if (ERROR == taskUnlock())
@@ -1497,7 +1520,7 @@ static STATUS m77OptsSet
     	return ERROR;
 
 
-    pChan->sio_hw_opts = options;
+    pChan->sio_hw_opts = (u_int16) options;
 
     return OK;
 }
@@ -1835,7 +1858,7 @@ static STATUS m77OptsSet
 	    lockKey = intLock();
 
 		/* disable 950 interrupt trigger levels */
-		writeICR (pChan, M77_ACR_OFFSET, (pChan->shadowACR & (~M77_ACR_950_TRIG_EN)));
+		writeICR (pChan, M77_ACR_OFFSET, (u_int16)(pChan->shadowACR & (~M77_ACR_950_TRIG_EN)));
 
 		/* disable enhanced (16C950) mode */
 		efr = read650(pChan, M77_EFR_OFFSET);
@@ -2025,6 +2048,7 @@ static int m77Int(int devNum)
 	u_int16 isrReg;
 	volatile u_int16 tflReg;
 	u_int32 controllerNum = 0;
+	int timedOut;
 
 
 	IDBGWRT_1( ( DBH, "m77Int\n" ));
@@ -2258,6 +2282,20 @@ isrEnd:
 					M77_IRQ_REG + (controllerNum * M45N_CTRL_REG_BLOCK_SIZE),
 					isrReg );
 
+		/*
+		 * If we exit the interrupt handler too early the interrupt request
+		 * from 0X16C954 can be still pending and generate spurious interrupts.
+		 * Then we check (maximum 2 times) if interrupt request is really
+		 * cleared before exiting the interrupt handler.
+		 */
+		timedOut = 2;
+		do {
+			isrReg = MREAD_D16( m77DevData[devNum]->ma,
+								M77_IRQ_REG +
+								(controllerNum * M45N_CTRL_REG_BLOCK_SIZE) );
+			timedOut--;
+		} while(((isrReg & M77_IRQ_CLEAR) == M77_IRQ_CLEAR) && (timedOut > 0));
+
 	} /* if */
 
 	/* call BBIS IRQ-Exit function to clear int on base board */
@@ -2468,7 +2506,7 @@ static int m77HSModeSet(M77_TY_CO_DEV *pChan)
 		write650(pChan, M77_XON2_OFFSET, M77_XON_CHAR);
 		write650(pChan, M77_XOFF2_OFFSET, M77_XOFF_CHAR);
 
-		setInBandFlowControlMode( pChan, pChan->hsInBandMode );
+		setInBandFlowControlMode( pChan, (u_int)pChan->hsInBandMode );
 	} else
 		setInBandFlowControlMode( pChan, 0 );
 
@@ -2585,7 +2623,7 @@ static UINT16 readDivisor(M77_TY_CO_DEV *pChan)
 	oldLCR = MREAD_D16(pChan->ma, M77_LCR_REG);
 	MWRITE_D16(pChan->ma, M77_LCR_REG, oldLCR | M77_LCR_DL_ACCESS_KEY);
 	/* construct divisor latch, then restore old values*/
-	dlldlm = (MREAD_D16(pChan->ma, M77_IER_DLM_REG)<<8);
+	dlldlm = (UINT16)(MREAD_D16(pChan->ma, M77_IER_DLM_REG)<<8);
 	dlldlm += (MREAD_D16(pChan->ma, M77_HOLD_DLL_REG) & 0x00ff);
 	MWRITE_D16(pChan->ma, M77_LCR_REG, oldLCR);
 	return dlldlm;
@@ -2712,7 +2750,7 @@ static u_int16 readICR(M77_TY_CO_DEV *pChan, u_int16 index)
 	writeICR(pChan, M77_ACR_OFFSET, (u_int16)(pChan->shadowACR | M77_ACR_ICR_READ_EN));
 	MWRITE_D16(pChan->ma, M77_SPR_REG, index);
 	retVal = MREAD_D16(pChan->ma, M77_ICR_OFFSET);
-	writeICR(pChan, M77_ACR_OFFSET, (u_int16)pChan->shadowACR & ~M77_ACR_ICR_READ_EN);
+	writeICR(pChan, M77_ACR_OFFSET, (u_int16)(pChan->shadowACR & ~M77_ACR_ICR_READ_EN));
 	return (retVal & 0x00ff);
 }
 #endif /* DBG */
@@ -3375,7 +3413,7 @@ static int32 m77ReadChanDesc(DESC_SPEC *pDesc, MODSTAT *pModData, int devNum)
 	        					"HANDSHAKE_HIGH_FIFO_LEVEL\n"));
 	        goto CLEANUP;
 	    }
-		m_tyCoDv[devNum][i].hsHighFifoLevel = descVal;
+		m_tyCoDv[devNum][i].hsHighFifoLevel = (u_int16)descVal;
 
 		/* get HANDSHAKE_LOW_FIFO_LEVEL */
 	    retCode = DESC_GetUInt32( descHdl,
@@ -3389,7 +3427,7 @@ static int32 m77ReadChanDesc(DESC_SPEC *pDesc, MODSTAT *pModData, int devNum)
 	        					"HANDSHAKE_LOW_FIFO_LEVEL\n"));
 	        goto CLEANUP;
 	    }
-		m_tyCoDv[devNum][i].hsLowFifoLevel  = descVal;
+		m_tyCoDv[devNum][i].hsLowFifoLevel  = (u_int16)descVal;
 
 		/* get HANDSHAKE_XONXOFF */
 	    retCode = DESC_GetUInt32( descHdl,
