@@ -244,6 +244,8 @@ extern "C" {
 #define M77_DEF_FCL				0x40
 #define M77_DEF_FCH				0x64
 
+#define M77_FIFO_SIZE			128
+
 #endif	/* _ASMLANGUAGE */
 #ifdef __cplusplus
 }
