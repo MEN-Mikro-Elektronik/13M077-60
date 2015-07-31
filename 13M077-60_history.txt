@@ -1,0 +1,70 @@
+-----[ Revision 1.8 ]-----
+[ 2015-07-31 14:00:00 by channoyer ]
+R: 1. Closing an open file handle failed with -1 (errno: -23, UNAVAIL)
+   2. Compile on vxWorks 6.9 showed warnings
+   3. M77_FIFO_SIZE used in driver and tool m77_echo
+   4. Not possible to use FIFO in the tool m77_echo
+   5. No error handling in the endless loop in the tool m77_echo
+   6. In the tool m77_echoIncorrect 10 secondes delay in m77EchoShow when
+      it is called for not endless loop (only once)
+   7. Mixed usage of tab and space on the same source code
+M: 1. Implemented m77Create and m77Close and pass them to
+      iosDrvInstall.
+   2. Add TY_DEVSTART_PTR
+   3. Move M77_FIFO_SIZE define to m77_drv.h
+   4. Add to the function m77Echo() the arguments rxFifoLevel and
+      txFifoLevel
+   5. a) Check error case
+      b) Do not call the write in the case the read return a length of 0
+   6. Call taskDelay only in case we do endless loop
+   7. Replace all tab by space
+
+--------- start of git repository based driver maintenance ------------
+
+
+-----[ Revision 1.7 ]-----
+[ 2010-01-22 15:09:47 by cs ]
+R:1. MACCESS macros where modified for MPC85xx (compile errors)
+  2. m77OxRegDump() was called in non DBG driver as well (compiler error)
+M:1. put all MACCESS macros in conditionals into curly braces
+  2. only call m77OxRegDump() when DBG defined
+
+-----[ Revision 1.6 ]-----
+[ 2007-06-08 13:22:20 by cs ]
+added:
+  + support for M45N/M69N
+  + support for XON/XOFF handshaking
+  - native makefiles (TOOLS):
+    + support for VxW 6.x
+    + support for VxW Version dependant dir/file structure in .../LIB/...
+Fixed/Changed:
+  - PHYS_INT defaults to RS422_FD if not specified
+  - M77 Descriptors: now matching with xml description and specification
+  - ECHO_SUPPRESS defaults to 1 if not specified
+
+-----[ Revision 1.5 ]-----
+[ 2005-05-13 14:19:06 by AGromann ]
+Removed problem with Tornado 2.0.2: System hangs during transmission using Xon/Xoff flow control.
+
+-----[ Revision 1.4 ]-----
+[ 2004-10-15 15:00:55 by ufranke ]
+added
+  + example m77EchoShow for display statistics
+  + MDIS Wizard support (xml file)
+changed
+  - File locations to match MDIS Wizard guided installation
+
+-----[ Revision 1.3 ]-----
+[ 2003-10-31 11:59:51 by Agromann ]
+Removed receive problem with ioctl M77_NO_FIFO
+
+-----[ Revision 1.2 ]-----
+[ 2002-09-09 07:57:32 by agromann ]
+*** CHANGED FILES ***
+m77_drv.c:
+    Now initialize lastErr and shadowACR in function m77ChannelRest
+
+-----[ Revision 1.1 ]-----
+[ 2002-07-18 12:43:04 by agromann ]
+Initial Revision
+
