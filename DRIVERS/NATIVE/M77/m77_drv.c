@@ -1245,7 +1245,7 @@ static int32 m77IrqInstall( u_int32 devBusType,
     /* install the new isr */
     {
         /* try to use vxbIntConnect( ), the VXB_INTR_DYNAMIC is configured in the BSP */
-        VXB_DEVICE_ID devID = vxbInstByNameFind("menPciCham",0);
+        VXB_DEVICE_ID devID = vxbInstByNameFind("menPciCham",1);
         if( devID != NULL ) {
             if ((vxbIntConnect (devID, 0, (VOIDFUNCPTR)newIsr, (void*)device_num)) != OK) {
                 DBGWRT_1((DBH, " *** m77IrqInstall: Error calling vxbIntConnect returned ERROR\n"));
