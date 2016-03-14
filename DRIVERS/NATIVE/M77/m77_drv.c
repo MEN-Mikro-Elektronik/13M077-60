@@ -173,6 +173,7 @@ typedef struct {
 
     /* parameters initialized in DriverEntry */
     MACCESS         ma;                             /* offest address of module */
+    u_int32         vxDevInstance;                  /* # of vxBus device instance of "menPciCham" device the module is located */
     u_int32         devSlot;                        /* device slot */
     u_int32         modId;                          /* M-Module Id of this device */
     u_int32         numChannels;                    /* number of SIO channels of module */
@@ -320,7 +321,8 @@ static int32 m77IrqInstall( u_int32 devBusType,
                      u_int32 irqLevel,
                      u_int32 intMode,
                      void    *newIsr,
-                     u_int32 device_num );
+					 u_int32 device_num,
+					 u_int32 vxbInstance);
 
 static STATUS  m77BaudSet
     (
@@ -635,12 +637,12 @@ STATUS m77Drv
     | get interrupt description from BBIS |
     | intVector, intLevel, intMode        |
     +------------------------------------*/
-    retCode = m77DevData[device_num]->pBbisEntry.cfgInfo(   m77DevData[device_num]->brdHdl,
-                                                            BBIS_CFGINFO_IRQ,
-                                                            m77DevData[device_num]->devSlot,
-                                                            &irqVect,
-                                                            &irqLevel,
-                                                            &intMode );
+    retCode = m77DevData[device_num]->pBbisEntry.cfgInfo( m77DevData[device_num]->brdHdl,
+                                                          BBIS_CFGINFO_IRQ,
+                                                          m77DevData[device_num]->devSlot,
+                                                          &irqVect,
+                                                          &irqLevel,
+                                                          &intMode );
 
     if( retCode != 0 )
     {
@@ -849,22 +851,15 @@ STATUS m77Drv
     #ifdef M77_DBG
         fprintf (stderr, "m77Drv: m77IrqInstall\n");
     #endif
-    DBGWRT_2( ( DBH, "m77Drv: m77IrqInstall: irqLevel = %d irqVect = %d\n"
-    , irqLevel, irqVect));
+    DBGWRT_2( ( DBH, "m77Drv: m77IrqInstall: irqLevel = %d irqVect = %d\n", irqLevel, irqVect));
 
     /*--------------------------+
     | installation of           |
     | interrupt service routine |
     | in BBIS                   |
     +--------------------------*/
-    retCode = m77IrqInstall(    devBusType,
-                                busType,
-                                irqVect,
-                                irqLevel,
-                                intMode,
-                                m77Int,
-                                device_num
-                           );
+    retCode = m77IrqInstall( devBusType, busType, irqVect, irqLevel, 
+							 intMode, m77Int, device_num, m77DevData[device_num]->vxDevInstance );
 
     if ( retCode != 0 )
     {
@@ -872,7 +867,6 @@ STATUS m77Drv
 
         goto CLEANUP;
     }/*if*/
-
 
 
     #ifdef M77_DBG
@@ -1224,7 +1218,8 @@ static int32 m77IrqInstall( u_int32 devBusType,
                      u_int32 irqLevel,
                      u_int32 intMode,
                      void    *newIsr,
-                     u_int32 device_num )
+					 u_int32 device_num,
+					 u_int32 vxbInstance)
 
 {
 
@@ -1245,7 +1240,7 @@ static int32 m77IrqInstall( u_int32 devBusType,
     /* install the new isr */
     {
         /* try to use vxbIntConnect( ), the VXB_INTR_DYNAMIC is configured in the BSP */
-        VXB_DEVICE_ID devID = vxbInstByNameFind("menPciCham",0);
+        VXB_DEVICE_ID devID = vxbInstByNameFind("menPciCham", vxbInstance );
         if( devID != NULL ) {
             if ((vxbIntConnect (devID, 0, (VOIDFUNCPTR)newIsr, (void*)device_num)) != OK) {
                 DBGWRT_1((DBH, " *** m77IrqInstall: Error calling vxbIntConnect returned ERROR\n"));
@@ -3211,6 +3206,17 @@ static int32 m77ReadDesc(DESC_SPEC *pDesc, MODSTAT *pModData, int devNum)
     }/*if*/
 
 
+
+
+	/* get vxBus device instance of M module carrier board  */
+	retCode = DESC_GetUInt32( descHdl, 0, &pModData->vxDevInstance, "VXBUS_MMOD_CARRIER_INSTANCE" );
+    if( retCode != 0 && retCode != ERR_DESC_KEY_NOTFOUND )
+    {
+        DBGWRT_ERR( ( DBH, " *** m77ReadDesc: DESC_GetUInt32 VXBUS_MMOD_CARRIER_INSTANCE\n"));
+        goto CLEANUP;
+    }
+
+
     /* get device slot number */
     retCode = DESC_GetUInt32( descHdl , 0, &pModData->devSlot, "DEVICE_SLOT");
     if( retCode != 0 )
@@ -3220,10 +3226,7 @@ static int32 m77ReadDesc(DESC_SPEC *pDesc, MODSTAT *pModData, int devNum)
     }
 
     /* get debug level */
-    retCode = DESC_GetUInt32( descHdl,
-                              OSS_DBG_DEFAULT,
-                              &m77DgbLev,
-                              "DEBUG_LEVEL" );
+    retCode = DESC_GetUInt32( descHdl, OSS_DBG_DEFAULT, &m77DgbLev, "DEBUG_LEVEL" );
     if( retCode != 0 && retCode != ERR_DESC_KEY_NOTFOUND )
     {
         DBGWRT_ERR( ( DBH, " *** m77ReadDesc: DESC_GetUInt32 DEBUG_LEVEL\n"));
@@ -3231,10 +3234,7 @@ static int32 m77ReadDesc(DESC_SPEC *pDesc, MODSTAT *pModData, int devNum)
     }
 
     /* module ID check */
-    retCode = DESC_GetUInt32( descHdl,
-                              1,
-                              &pModData->idCheck,
-                              "ID_CHECK" );
+    retCode = DESC_GetUInt32( descHdl, 1, &pModData->idCheck, "ID_CHECK" );
     if( retCode != 0 && retCode != ERR_DESC_KEY_NOTFOUND )
     {
         DBGWRT_ERR( ( DBH, " *** m77ReadDesc: DESC_GetUInt32 ID_CHECK\n"));

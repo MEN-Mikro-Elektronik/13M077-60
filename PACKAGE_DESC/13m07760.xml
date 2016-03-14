@@ -1,9 +1,9 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="packagedesc.xsd">
 	<name>13m07760</name>
 	<description>VxWorks native driver package for MEN M77 M-Module</description>
-	<date>2004-10-15</date>
-	<revision>1.4</revision>
+	<date>2016-03-14</date>
+	<revision>1.9</revision>
 	<docroot>DRIVERS/NATIVE/M77/DOC/m77_drv.txt</docroot>
 	<modellist>
 		<model>
@@ -869,6 +869,12 @@
 					<description>disable -- ignore IDPROM</description>
 				</choise>
 			</choises>
+		</setting>
+		<setting>
+			<name>VXBUS_MMOD_CARRIER_INSTANCE</name>
+			<description>Define at which menPciDev vxBus instance the Module is located</description>
+			<type>U_INT32</type>
+			<defaultvalue>0</defaultvalue>
 		</setting>
 	</settinglist>
 	<swmodulelist>
