@@ -1225,6 +1225,7 @@ static int32 m77IrqInstall( u_int32 devBusType,
 
     STATUS  vxRetCode = 0;
     int32   retCode = 0;
+	
     /* pointer to IRQ connect routine */
     STATUS (*M77_intConnectRtn)
     (VOIDFUNCPTR *vector, VOIDFUNCPTR routine, int parameter );
@@ -1233,9 +1234,32 @@ static int32 m77IrqInstall( u_int32 devBusType,
     /* pointer to IRQ enable routine */
     STATUS (*M77_intEnableRtn)(int level);
 
+#if(CPU==PENTIUM4)
+    int32   error = OK;
+    int     virtualIrqNum;
+    /* Symmetric IO APIC for x86 boards */
+    STATUS (*M77_smpPciIrqNumToVirtualIrqNumRtn)( int pciIrqNum, int *virtualIrqNumP );
+#endif
+
     M77_intConnectRtn   = MK_GetIntConnectRtn();
     M77_vmeIntEnableRtn = MK_GetVmeIntEnableRtn();
     M77_intEnableRtn    = MK_GetIntEnableRtn();
+
+#if(CPU==PENTIUM4)
+    M77_smpPciIrqNumToVirtualIrqNumRtn = MK_GetSmpPciIrqNumToVirtualIrqNumRtn();
+    {
+        error = M77_smpPciIrqNumToVirtualIrqNumRtn( irqLevel, &virtualIrqNum );
+        if( error )
+        {
+            DBGWRT_ERR((DBH, "*** m77IrqInstall: M77_smpPciIrqNumToVirtualIrqNumRtn \n" ));
+            DBGWRT_ERR((DBH, "INFO: BSP APIC SYMMETRIC_IO_MODE not allowed Interrupt Mode - check your BSP to be sure\n" ));
+            DBGWRT_ERR((DBH, "INFO: or add something like BUILD/MDIS/MEN_F15_SMP/sysPentiumPciIrqNumToVirtualIrqNum.c to your BSP also\n" ));
+            DBGWRT_ERR((DBH, "INFO: and configure with MK_SetSmpPciIrqNumToVirtualIrqNumRtn( sysPentiumPciIrqNumToVirtualIrqNum )\n" ));
+            retCode = ERR_MK_IRQ_INSTALL;
+        }
+        irqVect = virtualIrqNum;
+    }
+#endif /*(CPU==PENTIUM4)*/
 
     /* install the new isr */
     {
